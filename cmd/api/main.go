@@ -3,15 +3,33 @@ package main
 import (
 	"log"
 	"net"
+	"net/http"
+
+	_ "net/http/pprof"
 
 	"google.golang.org/grpc"
 
-	routerv1 "fluxruntime/proto/v1"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"fluxruntime/internal/metrics"
 	"fluxruntime/internal/router"
+	routerv1 "fluxruntime/proto/v1"
 )
 
 func main() {
+
+	metrics.Register()
+
+	go func() {
+
+		http.Handle("/metrics", promhttp.Handler())
+
+		log.Println("📊 metrics server listening on :6060")
+		log.Println("🔥 pprof enabled on :6060")
+
+		log.Println(http.ListenAndServe(":6060", nil))
+
+	}()
 
 	rtr := router.New()
 

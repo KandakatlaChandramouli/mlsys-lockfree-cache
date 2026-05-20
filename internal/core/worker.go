@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	routerv1 "fluxruntime/proto/v1"
@@ -11,6 +12,13 @@ const (
 	workerQueueDepth = 256
 	processingDelay  = 100 * time.Microsecond
 )
+
+var vectorPool = sync.Pool{
+	New: func() any {
+		buf := make([]float32, 64)
+		return &buf
+	},
+}
 
 type Job struct {
 	Req    *routerv1.RouteRequest
@@ -42,11 +50,15 @@ func NewWorker(id int) *Worker {
 }
 
 func (w *Worker) Enqueue(ctx context.Context, job Job) bool {
+
 	select {
+
 	case w.queue <- job:
 		return true
+
 	case <-ctx.Done():
 		return false
+
 	default:
 		return false
 	}
@@ -58,6 +70,7 @@ func (w *Worker) Shutdown() {
 }
 
 func (w *Worker) run() {
+
 	defer close(w.done)
 
 	for job := range w.queue {
@@ -66,6 +79,7 @@ func (w *Worker) run() {
 }
 
 func (w *Worker) process(job Job) {
+
 	resp, err := w.infer(job.Ctx, job.Req)
 
 	job.Result <- Result{
@@ -80,18 +94,32 @@ func (w *Worker) infer(
 ) (*routerv1.RouteResponse, error) {
 
 	select {
+
 	case <-ctx.Done():
 		return nil, ctx.Err()
+
 	case <-time.After(processingDelay):
 	}
 
-	vec := make([]float32, len(req.Tokens))
+	bufPtr := vectorPool.Get().(*[]float32)
+
+	vec := *bufPtr
+
+	if len(vec) < len(req.Tokens) {
+		vec = make([]float32, len(req.Tokens))
+	}
+
+	vec = vec[:len(req.Tokens)]
 
 	for i := range vec {
 		vec[i] = float32(i) * 0.1
 	}
 
-	return &routerv1.RouteResponse{
+	resp := &routerv1.RouteResponse{
 		Vector: vec,
-	}, nil
+	}
+
+	vectorPool.Put(&vec)
+
+	return resp, nil
 }
