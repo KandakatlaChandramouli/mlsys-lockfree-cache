@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package router.v1;
+
+option go_package = "fluxruntime/proto/v1;routerv1";
+
+service RouterService {
+  rpc Route(RouteRequest) returns (RouteResponse);
+}
+
+message RouteRequest {
+  uint64 query_hash = 1;
+  repeated uint32 tokens = 2;
+}
+
+message RouteResponse {
+  repeated float vector = 1;
+}
