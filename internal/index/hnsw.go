@@ -14,6 +14,12 @@ const (
     BeamWidth    = 16
 )
 
+
+type pair struct {
+    idx   int
+    score float32
+}
+
 type HNSWIndex struct {
     mu    sync.RWMutex
     nodes []Node
@@ -168,14 +174,52 @@ func (h *HNSWIndex) Search(
             },
         )
 
+        local := make(
+            []pair,
+            0,
+            len(node.Neighbors),
+        )
+
         for _, n := range node.Neighbors {
 
-            if !visited[n] {
-                frontier = append(
-                    frontier,
-                    n,
-                )
+            if visited[n] {
+                continue
             }
+
+            score := cosine(
+                query,
+                h.nodes[n].Embedding,
+            )
+
+            local = append(
+                local,
+                pair{
+                    idx: n,
+                    score: score,
+                },
+            )
+        }
+
+        sort.Slice(
+            local,
+            func(i, j int) bool {
+                return local[i].score >
+                       local[j].score
+            },
+        )
+
+        limit := BeamWidth
+
+        if len(local) < limit {
+            limit = len(local)
+        }
+
+        for i := 0; i < limit; i++ {
+
+            frontier = append(
+                frontier,
+                local[i].idx,
+            )
         }
     }
 
