@@ -1,0 +1,5 @@
+system,recall
+bruteforce,1.0
+hnsw,0.96
+ivf,0.89
+hivf,0.93
