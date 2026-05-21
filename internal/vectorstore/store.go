@@ -98,6 +98,33 @@ func (s *Store) Search(
 
 
 
+
+
+func (s *Store) Records() []VectorRecord {
+
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+
+    out := make(
+        []VectorRecord,
+        len(s.vectors),
+    )
+
+    copy(out, s.vectors)
+
+    return out
+}
+
+func (s *Store) Restore(
+    records []VectorRecord,
+) {
+
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    s.vectors = records
+}
+
 func cosine(
     a []float32,
     b []float32,
