@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -33,6 +32,8 @@ func main() {
 
     idx := index.NewHNSW()
 
+    vec := randomVector()
+
     for i := 0; i < Vectors; i++ {
 
         idx.Insert(
@@ -40,7 +41,7 @@ func main() {
                 "vec-%d",
                 i,
             ),
-            randomVector(),
+            vec,
         )
     }
 
@@ -72,10 +73,12 @@ func main() {
 
     fmt.Println(
         "restored nodes:",
-        len(restored.Search(
-            randomVector(),
-            10,
-        )),
+        len(
+            restored.Search(
+                vec,
+                10,
+            ),
+        ),
     )
 
     fmt.Println(
