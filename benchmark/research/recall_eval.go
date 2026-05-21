@@ -16,6 +16,7 @@ const (
     Vectors = 10000
     Queries = 100
     TopK    = 10
+    EfSearch = 128
 )
 
 type Pair struct {
@@ -30,8 +31,26 @@ func randomVector() []float32 {
         Dim,
     )
 
+    norm := float32(0)
+
     for i := range out {
-        out[i] = rand.Float32()
+
+        v := rand.Float32()
+
+        out[i] = v
+
+        norm += v * v
+    }
+
+    if norm == 0 {
+        return out
+    }
+
+    inv := float32(1.0) /
+        float32(norm)
+
+    for i := range out {
+        out[i] *= inv
     }
 
     return out
@@ -176,9 +195,10 @@ func main() {
 
         start := time.Now()
 
-        pred := idx.Search(
+        pred := idx.SearchWithEF(
             q,
             TopK,
+            EfSearch,
         )
 
         hist.Record(

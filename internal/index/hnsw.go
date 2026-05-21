@@ -189,3 +189,16 @@ func cosine(
         b,
     )
 }
+
+
+func (h *HNSWIndex) SearchWithEF(
+    query []float32,
+    k int,
+    ef int,
+) []vectorstore.SearchResult {
+
+    return h.Search(
+        query,
+        k,
+    )
+}
