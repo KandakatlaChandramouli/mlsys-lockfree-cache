@@ -1,254 +1,246 @@
 package main
 
 import (
-    "fmt"
-    "math"
-    "math/rand"
-    "sort"
-    "time"
+	"fmt"
+	"math"
+	"math/rand"
+	"sort"
+	"time"
 
-    "fluxruntime/internal/index"
-    "fluxruntime/internal/telemetry"
-    "fluxruntime/internal/vectorstore"
+	"fluxruntime/internal/hnsw"
 )
 
 const (
-    Dim     = 384
-    Vectors = 10000
-    Queries = 100
-    TopK    = 10
-    EfSearch = 128
+	Dim      = 384
+	Vectors  = 10000
+	Queries  = 100
+	TopK     = 10
+	EfSearch = 128
 )
-
-type Pair struct {
-    idx int
-    sim float32
-}
 
 func randomVector() []float32 {
 
-    out := make(
-        []float32,
-        Dim,
-    )
+	out := make(
+		[]float32,
+		Dim,
+	)
 
-    norm := float32(0)
+	var norm float32
 
-    for i := range out {
+	for i := range out {
 
-        v := rand.Float32()
+		v := rand.Float32()
 
-        out[i] = v
+		out[i] = v
 
-        norm += v * v
-    }
+		norm += v * v
+	}
 
-    if norm == 0 {
-        return out
-    }
+	inv := float32(
+		1.0 / math.Sqrt(
+			float64(norm),
+		),
+	)
 
-    inv := float32(
-        1.0 / math.Sqrt(
-            float64(norm),
-        ),
-    )
+	for i := range out {
+		out[i] *= inv
+	}
 
-    for i := range out {
-        out[i] *= inv
-    }
-
-    return out
-}
-
-func dot(
-    a []float32,
-    b []float32,
-) float32 {
-
-    var s float32
-
-    for i := range a {
-        s += a[i] * b[i]
-    }
-
-    return s
+	return out
 }
 
 func cosine(
-    a []float32,
-    b []float32,
+	a []float32,
+	b []float32,
 ) float32 {
 
-    return dot(
-        a,
-        b,
-    )
+	var s float32
+
+	for i := range a {
+		s += a[i] * b[i]
+	}
+
+	return s
 }
 
 func bruteForce(
-    db [][]float32,
-    q []float32,
+	db [][]float32,
+	q []float32,
 ) []int {
 
-    scores := make(
-        []Pair,
-        0,
-        len(db),
-    )
+	type pair struct {
+		idx int
+		sim float32
+	}
 
-    for i, v := range db {
+	scores := make(
+		[]pair,
+		0,
+		len(db),
+	)
 
-        s := cosine(
-            q,
-            v,
-        )
+	for i, v := range db {
 
-        scores = append(
-            scores,
-            Pair{
-                idx: i,
-                sim: s,
-            },
-        )
-    }
+		scores = append(
+			scores,
+			pair{
+				idx: i,
+				sim: cosine(
+					q,
+					v,
+				),
+			},
+		)
+	}
 
-    sort.Slice(
-        scores,
-        func(i, j int) bool {
-            return scores[i].sim >
-                scores[j].sim
-        },
-    )
+	sort.Slice(
+		scores,
+		func(i, j int) bool {
+			return scores[i].sim >
+				scores[j].sim
+		},
+	)
 
-    out := make(
-        []int,
-        TopK,
-    )
+	out := make(
+		[]int,
+		0,
+		TopK,
+	)
 
-    for i := 0; i < TopK; i++ {
-        out[i] = scores[i].idx
-    }
+	for i := 0; i < TopK; i++ {
+		out = append(
+			out,
+			scores[i].idx,
+		)
+	}
 
-    return out
+	return out
 }
 
 func recall(
-    gt []int,
-    pred []vectorstore.SearchResult,
+	gt []int,
+	pred []hnsw.Candidate,
 ) float64 {
 
-    gtset := make(
-        map[string]struct{},
-    )
+	m := make(
+		map[int]struct{},
+	)
 
-    for _, g := range gt {
+	for _, g := range gt {
+		m[g] = struct{}{}
+	}
 
-        key := fmt.Sprintf(
-            "vec-%d",
-            g,
-        )
+	hit := 0
 
-        gtset[key] = struct{}{}
-    }
+	for _, p := range pred {
 
-    hit := 0
+		if _, ok := m[p.Index]; ok {
 
-    for _, p := range pred {
+			hit++
+		}
+	}
 
-        if _, ok := gtset[p.ID]; ok {
-            hit++
-        }
-    }
-
-    return float64(hit) /
-        float64(len(gt))
+	return float64(hit) /
+		float64(len(gt))
 }
 
 func main() {
 
-    db := make(
-        [][]float32,
-        0,
-        Vectors,
-    )
+	idx := hnsw.New(
+		16,
+		200,
+	)
 
-    idx := index.NewHNSW()
+	db := make(
+		[][]float32,
+		0,
+		Vectors,
+	)
 
-    for i := 0; i < Vectors; i++ {
+	for i := 0; i < Vectors; i++ {
 
-        v := randomVector()
+		v := randomVector()
 
-        db = append(
-            db,
-            v,
-        )
+		db = append(
+			db,
+			v,
+		)
 
-        idx.Insert(
-            fmt.Sprintf(
-                "vec-%d",
-                i,
-            ),
-            append(
-                []float32(nil),
-                v...,
-            ),
-        )
-    }
+		idx.Insert(
+			fmt.Sprintf(
+				"vec-%d",
+				i,
+			),
+			v,
+		)
+	}
 
-    hist := telemetry.NewHistogram()
+	totalRecall := 0.0
 
-    totalRecall := 0.0
+	latencies := make(
+		[]int64,
+		0,
+		Queries,
+	)
 
-    for i := 0; i < Queries; i++ {
+	for i := 0; i < Queries; i++ {
 
-        q := randomVector()
+		q := randomVector()
 
-        gt := bruteForce(
-            db,
-            q,
-        )
+		gt := bruteForce(
+			db,
+			q,
+		)
 
-        start := time.Now()
+		start := time.Now()
 
-        pred := idx.SearchWithEF(
-            q,
-            TopK,
-            EfSearch,
-        )
+		pred := idx.Search(
+			q,
+			TopK,
+			EfSearch,
+		)
 
-        hist.Record(
-            start,
-        )
+		latencies = append(
+			latencies,
+			time.Since(start).Nanoseconds(),
+		)
 
-        totalRecall += recall(
-            gt,
-            pred,
-        )
-    }
+		totalRecall += recall(
+			gt,
+			pred,
+		)
+	}
 
-    fmt.Println(
-        "queries:",
-        Queries,
-    )
+	sort.Slice(
+		latencies,
+		func(i, j int) bool {
+			return latencies[i] <
+				latencies[j]
+		},
+	)
 
-    fmt.Println(
-        "recall@10:",
-        totalRecall/
-            float64(Queries),
-    )
+	fmt.Println(
+		"queries:",
+		Queries,
+	)
 
-    fmt.Println(
-        "p50(ns):",
-        hist.Percentile(50),
-    )
+	fmt.Println(
+		"recall@10:",
+		totalRecall/Queries,
+	)
 
-    fmt.Println(
-        "p95(ns):",
-        hist.Percentile(95),
-    )
+	fmt.Println(
+		"p50(ns):",
+		latencies[len(latencies)*50/100],
+	)
 
-    fmt.Println(
-        "p99(ns):",
-        hist.Percentile(99),
-    )
+	fmt.Println(
+		"p95(ns):",
+		latencies[len(latencies)*95/100],
+	)
+
+	fmt.Println(
+		"p99(ns):",
+		latencies[len(latencies)*99/100],
+	)
 }

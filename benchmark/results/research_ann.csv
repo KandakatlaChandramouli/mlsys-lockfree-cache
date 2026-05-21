@@ -1,0 +1,5 @@
+system,metric,value
+research_hnsw,recall_at_10,0.012
+research_hnsw,p50_ns,16255653
+research_hnsw,p95_ns,18277624
+research_hnsw,p99_ns,21508453

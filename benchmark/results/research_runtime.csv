@@ -1,0 +1,5 @@
+system,metric,value
+prototype_hnsw,recall_at_10,0.012
+prototype_hnsw,p50_ns,16255653
+prototype_hnsw,p95_ns,18277624
+prototype_hnsw,p99_ns,21508453
