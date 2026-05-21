@@ -133,6 +133,13 @@ func (m *Model) RunBatch(
 			EmbeddingDim,
 		)
 
+		for i := range embedding {
+
+			embedding[i] = float32(
+				(req.Tokens[0]+int32(i))%97,
+			) / 97.0
+		}
+
 		l2Normalize(
 			embedding,
 		)
