@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/binary"
 	"io"
 	"log"
@@ -29,6 +30,16 @@ func handle(
 
 	defer conn.Close()
 
+	reader := bufio.NewReaderSize(
+		conn,
+		64*1024,
+	)
+
+	writer := bufio.NewWriterSize(
+		conn,
+		64*1024,
+	)
+
 	connID := connCounter.Add(1)
 
 	for {
@@ -36,7 +47,7 @@ func handle(
 		var hdr Header
 
 		err := binary.Read(
-			conn,
+			reader,
 			binary.LittleEndian,
 			&hdr,
 		)
@@ -58,7 +69,7 @@ func handle(
 		)
 
 		err = binary.Read(
-			conn,
+			reader,
 			binary.LittleEndian,
 			&tokens,
 		)
@@ -67,8 +78,9 @@ func handle(
 			return
 		}
 
-		done := make(
-			chan struct{},
+		respCh := make(
+			chan *core.RawResponse,
+			1,
 		)
 
 		ok := engine.Submit(
@@ -79,35 +91,7 @@ func handle(
 					ConnID:    connID,
 				},
 
-				Callback: func(
-					resp *core.RawResponse,
-				) {
-
-					vecLen := uint32(
-						len(resp.Vector),
-					)
-
-					err := binary.Write(
-						conn,
-						binary.LittleEndian,
-						vecLen,
-					)
-
-					if err == nil {
-
-						err = binary.Write(
-							conn,
-							binary.LittleEndian,
-							resp.Vector,
-						)
-					}
-
-					core.ReleaseVector(
-						&resp.Vector,
-					)
-
-					close(done)
-				},
+				Resp: respCh,
 			},
 		)
 
@@ -115,7 +99,41 @@ func handle(
 			return
 		}
 
-		<-done
+		resp := <-respCh
+
+		vecLen := uint32(
+			len(resp.Vector),
+		)
+
+		err = binary.Write(
+			writer,
+			binary.LittleEndian,
+			vecLen,
+		)
+
+		if err != nil {
+			return
+		}
+
+		err = binary.Write(
+			writer,
+			binary.LittleEndian,
+			resp.Vector,
+		)
+
+		if err != nil {
+			return
+		}
+
+		err = writer.Flush()
+
+		if err != nil {
+			return
+		}
+
+		core.ReleaseVector(
+			&resp.Vector,
+		)
 	}
 }
 

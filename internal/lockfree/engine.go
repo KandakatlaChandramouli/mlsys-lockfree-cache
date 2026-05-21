@@ -7,8 +7,8 @@ import (
 )
 
 type Request struct {
-	Req      *core.RawRequest
-	Callback func(*core.RawResponse)
+	Req  *core.RawRequest
+	Resp chan *core.RawResponse
 }
 
 type Engine struct {
@@ -82,15 +82,7 @@ func (e *Engine) loop() {
 
 		n++
 
-	flush:
-
 		for n < core.MaxBatchSize {
-
-			select {
-
-			default:
-				break flush
-			}
 
 			v, ok := e.ring.Pop()
 
@@ -113,9 +105,7 @@ func (e *Engine) loop() {
 
 		for i := 0; i < n; i++ {
 
-			e.batch[i].Callback(
-				resps[i],
-			)
+			e.batch[i].Resp <- resps[i]
 		}
 	}
 }
