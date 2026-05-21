@@ -157,11 +157,17 @@ func (h *HNSWIndex) Search(
         },
     )
 
-    if len(best) > topK {
-        best = best[:topK]
-    }
+    out := make(
+        []vectorstore.SearchResult,
+        topK,
+    )
 
-    return best
+    copy(
+        out,
+        best[:topK],
+    )
+
+    return out
 }
 
 func cosine(
