@@ -4,17 +4,21 @@ package transport
 import (
 	"bufio"
 	"context"
-	"encoding/binary"
-	"io"
 	"net"
 	"sync/atomic"
+	"time"
 
 	"fluxruntime/internal/core"
+	"fluxruntime/internal/metrics"
+	"fluxruntime/internal/protocol"
+	"fluxruntime/internal/tokenizer"
 )
 
 type Server struct {
 	addr string
 	pool *core.ShardedPool
+	tok  *tokenizer.Tokenizer
+	m    *metrics.Metrics
 	reqs atomic.Uint64
 }
 
@@ -26,6 +30,8 @@ func NewServer(
 	return &Server{
 		addr: addr,
 		pool: pool,
+		tok:  tokenizer.New(),
+		m:    metrics.New(),
 	}
 }
 
@@ -93,40 +99,17 @@ func (s *Server) handle(
 		default:
 		}
 
-		var size uint32
+		start := time.Now()
 
-		err := binary.Read(
+		text, err := protocol.ReadString(
 			reader,
-			binary.LittleEndian,
-			&size,
-		)
-
-		if err != nil {
-
-			if err == io.EOF {
-				return
-			}
-
-			return
-		}
-
-		buf := make(
-			[]byte,
-			size,
-		)
-
-		_, err = io.ReadFull(
-			reader,
-			buf,
 		)
 
 		if err != nil {
 			return
 		}
 
-		text := string(buf)
-
-		tokens := tokenize(
+		tokens := s.tok.Encode(
 			text,
 		)
 
@@ -135,34 +118,19 @@ func (s *Server) handle(
 		)
 
 		if err != nil {
+
+			s.m.RecordFailure()
+
 			return
 		}
 
-		outSize := uint32(
-			len(embedding),
-		)
-
-		err = binary.Write(
+		err = protocol.WriteEmbedding(
 			writer,
-			binary.LittleEndian,
-			outSize,
+			embedding,
 		)
 
 		if err != nil {
 			return
-		}
-
-		for _, v := range embedding {
-
-			err = binary.Write(
-				writer,
-				binary.LittleEndian,
-				v,
-			)
-
-			if err != nil {
-				return
-			}
 		}
 
 		err = writer.Flush()
@@ -171,30 +139,10 @@ func (s *Server) handle(
 			return
 		}
 
+		s.m.RecordRequest(
+			time.Since(start),
+		)
+
 		s.reqs.Add(1)
 	}
-}
-
-func tokenize(
-	text string,
-) []int32 {
-
-	out := []int32{
-		101,
-	}
-
-	for _, b := range []byte(text) {
-
-		out = append(
-			out,
-			int32(b)%30000,
-		)
-	}
-
-	out = append(
-		out,
-		102,
-	)
-
-	return out
 }
