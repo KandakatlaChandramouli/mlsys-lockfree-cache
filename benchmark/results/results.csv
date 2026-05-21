@@ -1,0 +1,10 @@
+system,metric,value
+scalar_go_dot,latency_ms,56
+avx2_dot,latency_ms,7.6
+hivf_routing_100k,latency_s,1.02
+async_ingest_100k,latency_s,1.14
+wal_replay_100k,latency_ms,9
+mmap_load,latency_us,88
+snapshot_size_kb,size_kb,461
+snapshot_old_mb,size_mb,221
+quorum_100k,latency_s,2.19
