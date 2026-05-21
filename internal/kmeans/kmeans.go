@@ -1,20 +1,28 @@
-
 package kmeans
+
+import (
+    "fluxruntime/internal/avx"
+)
 
 func L2(
     a []float32,
     b []float32,
 ) float32 {
 
-    var out float32
+    var aa float32
+    var bb float32
 
     for i := range a {
-
-        d := a[i] - b[i]
-        out += d * d
+        aa += a[i] * a[i]
+        bb += b[i] * b[i]
     }
 
-    return out
+    dot := avx.DotProduct(
+        a,
+        b,
+    )
+
+    return aa + bb - 2*dot
 }
 
 func Nearest(
@@ -23,6 +31,7 @@ func Nearest(
 ) int {
 
     best := 0
+
     bestDist := L2(
         vec,
         centroids[0],
