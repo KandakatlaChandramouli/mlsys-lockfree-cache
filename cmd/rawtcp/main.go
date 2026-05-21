@@ -221,11 +221,11 @@ func metricsServer() {
 	)
 
 	log.Println(
-		"🔥 metrics server listening on :9000",
+		"🔥 metrics server listening on :0",
 	)
 
 	http.ListenAndServe(
-		":9000",
+		":0",
 		mux,
 	)
 }
