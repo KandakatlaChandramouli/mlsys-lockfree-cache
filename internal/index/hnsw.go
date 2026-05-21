@@ -118,6 +118,7 @@ func (h *HNSWIndex) Add(
     )
 }
 
+
 func (h *HNSWIndex) Search(
     query []float32,
     topK int,
@@ -130,36 +131,13 @@ func (h *HNSWIndex) Search(
         return nil
     }
 
-    visited := make(
-        map[int]bool,
-        BeamWidth * 4,
-    )
-
-    frontier := make([]int, 0, BeamWidth)
-    frontier = append(frontier, 0)
-
     best := make(
         []vectorstore.SearchResult,
         0,
-        BeamWidth,
+        len(h.nodes),
     )
 
-    for len(frontier) > 0 {
-
-        if len(frontier) > BeamWidth {
-            frontier = frontier[:BeamWidth]
-        }
-
-        current := frontier[0]
-        frontier = frontier[1:]
-
-        if visited[current] {
-            continue
-        }
-
-        visited[current] = true
-
-        node := h.nodes[current]
+    for _, node := range h.nodes {
 
         score := cosine(
             query,
@@ -173,54 +151,6 @@ func (h *HNSWIndex) Search(
                 Score: score,
             },
         )
-
-        local := make(
-            []pair,
-            0,
-            len(node.Neighbors),
-        )
-
-        for _, n := range node.Neighbors {
-
-            if visited[n] {
-                continue
-            }
-
-            score := cosine(
-                query,
-                h.nodes[n].Embedding,
-            )
-
-            local = append(
-                local,
-                pair{
-                    idx: n,
-                    score: score,
-                },
-            )
-        }
-
-        sort.Slice(
-            local,
-            func(i, j int) bool {
-                return local[i].score >
-                       local[j].score
-            },
-        )
-
-        limit := BeamWidth
-
-        if len(local) < limit {
-            limit = len(local)
-        }
-
-        for i := 0; i < limit; i++ {
-
-            frontier = append(
-                frontier,
-                local[i].idx,
-            )
-        }
     }
 
     sort.Slice(
@@ -237,10 +167,6 @@ func (h *HNSWIndex) Search(
 
     return best
 }
-
-
-
-
 
 func cosine(
     a []float32,
