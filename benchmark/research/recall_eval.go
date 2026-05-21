@@ -103,20 +103,26 @@ func recall(
     pred []vectorstore.SearchResult,
 ) float64 {
 
-    hit := 0
+    gtset := make(
+        map[string]struct{},
+    )
 
     for _, g := range gt {
 
-        target := fmt.Sprintf(
+        key := fmt.Sprintf(
             "vec-%d",
             g,
         )
 
-        for _, p := range pred {
+        gtset[key] = struct{}{}
+    }
 
-            if target == p.ID {
-                hit++
-            }
+    hit := 0
+
+    for _, p := range pred {
+
+        if _, ok := gtset[p.ID]; ok {
+            hit++
         }
     }
 
