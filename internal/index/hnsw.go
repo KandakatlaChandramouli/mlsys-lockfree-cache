@@ -133,24 +133,20 @@ func (h *HNSWIndex) Search(
 
     best := make(
         []vectorstore.SearchResult,
-        0,
         len(h.nodes),
     )
 
-    for _, node := range h.nodes {
+    for i, node := range h.nodes {
 
         score := cosine(
             query,
             node.Embedding,
         )
 
-        best = append(
-            best,
-            vectorstore.SearchResult{
-                ID: node.ID,
-                Score: score,
-            },
-        )
+        best[i] = vectorstore.SearchResult{
+            ID: node.ID,
+            Score: score,
+        }
     }
 
     sort.Slice(
