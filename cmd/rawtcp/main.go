@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync/atomic"
 
 	"fluxruntime/internal/core"
 	"fluxruntime/internal/lockfree"
@@ -15,13 +16,19 @@ type Header struct {
 	TokenCount uint32
 }
 
-var engine = lockfree.NewSharded()
+var (
+	engine = lockfree.NewSharded()
+
+	connCounter atomic.Uint64
+)
 
 func handle(
 	conn net.Conn,
 ) {
 
 	defer conn.Close()
+
+	connID := connCounter.Add(1)
 
 	for {
 
@@ -57,36 +64,55 @@ func handle(
 			return
 		}
 
-		req := &core.RawRequest{
-			QueryHash: hdr.QueryHash,
-			Tokens: tokens,
-		}
-
-		resp := engine.Submit(req)
-
-		vecLen := uint32(
-			len(resp.Vector),
+		done := make(
+			chan struct{},
 		)
 
-		err = binary.Write(
-			conn,
-			binary.LittleEndian,
-			vecLen,
+		ok := engine.Submit(
+			&lockfree.Request{
+				Req: &core.RawRequest{
+					QueryHash: hdr.QueryHash,
+					Tokens: tokens,
+					ConnID: connID,
+				},
+
+				Callback: func(
+					resp *core.RawResponse,
+				) {
+
+					vecLen := uint32(
+						len(resp.Vector),
+					)
+
+					err := binary.Write(
+						conn,
+						binary.LittleEndian,
+						vecLen,
+					)
+
+					if err == nil {
+
+						err = binary.Write(
+							conn,
+							binary.LittleEndian,
+							resp.Vector,
+						)
+					}
+
+					core.ReleaseVector(
+						&resp.Vector,
+					)
+
+					close(done)
+				},
+			},
 		)
 
-		if err != nil {
+		if !ok {
 			return
 		}
 
-		err = binary.Write(
-			conn,
-			binary.LittleEndian,
-			resp.Vector,
-		)
-
-		if err != nil {
-			return
-		}
+		<-done
 	}
 }
 

@@ -6,22 +6,21 @@ import (
 	"fluxruntime/internal/core"
 )
 
-type request struct {
-	req *core.RawRequest
-	resp chan *core.RawResponse
+type Request struct {
+	Req      *core.RawRequest
+	Callback func(*core.RawResponse)
 }
 
 type Engine struct {
-	ring *Ring
-
+	ring   *Ring
 	worker *core.Worker
 }
 
-func NewEngine() *Engine {
+func NewEngine(id int) *Engine {
 
 	e := &Engine{
-		ring: NewRing(),
-		worker: core.NewWorker(0),
+		ring:   NewRing(),
+		worker: core.NewWorker(id),
 	}
 
 	go e.loop()
@@ -30,47 +29,80 @@ func NewEngine() *Engine {
 }
 
 func (e *Engine) Submit(
-	req *core.RawRequest,
-) *core.RawResponse {
-
-	slot := &request{
-		req: req,
-		resp: make(chan *core.RawResponse),
-	}
+	r *Request,
+) bool {
 
 	deadline := time.Now().Add(
 		5 * time.Millisecond,
 	)
 
-	for !e.ring.Push(slot) {
+	for !e.ring.Push(r) {
 
 		if time.Now().After(deadline) {
-			return &core.RawResponse{}
+			return false
 		}
 
 		time.Sleep(time.Microsecond)
 	}
 
-	return <-slot.resp
+	return true
 }
 
 func (e *Engine) loop() {
+
+	batch := make(
+		[]*Request,
+		0,
+		core.MaxBatchSize,
+	)
 
 	for {
 
 		v, ok := e.ring.Pop()
 
 		if !ok {
+
 			time.Sleep(time.Microsecond)
+
 			continue
 		}
 
-		req := v.(*request)
+		batch = batch[:0]
 
-		resp := e.worker.InferRaw(
-			req.req,
+		batch = append(
+			batch,
+			v.(*Request),
 		)
 
-		req.resp <- resp
+		for len(batch) < core.MaxBatchSize {
+
+			v, ok := e.ring.Pop()
+
+			if !ok {
+				break
+			}
+
+			batch = append(
+				batch,
+				v.(*Request),
+			)
+		}
+
+		reqs := make(
+			[]*core.RawRequest,
+			len(batch),
+		)
+
+		for i := range batch {
+			reqs[i] = batch[i].Req
+		}
+
+		resps := e.worker.InferBatch(
+			reqs,
+		)
+
+		for i := range batch {
+			batch[i].Callback(resps[i])
+		}
 	}
 }

@@ -2,17 +2,13 @@ package lockfree
 
 import "sync/atomic"
 
-const RingSize = 2048
-
-type Slot struct {
-	req any
-}
+const RingSize = 4096
 
 type Ring struct {
 	head atomic.Uint64
 	tail atomic.Uint64
 
-	buffer [RingSize]Slot
+	buf [RingSize]any
 }
 
 func NewRing() *Ring {
@@ -33,7 +29,7 @@ func (r *Ring) Push(
 
 	idx := head % RingSize
 
-	r.buffer[idx].req = v
+	r.buf[idx] = v
 
 	r.head.Add(1)
 
@@ -50,7 +46,7 @@ func (r *Ring) Pop() (any, bool) {
 
 	idx := tail % RingSize
 
-	v := r.buffer[idx].req
+	v := r.buf[idx]
 
 	r.tail.Add(1)
 

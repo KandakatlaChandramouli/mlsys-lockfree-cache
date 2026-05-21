@@ -3,28 +3,29 @@ package lockfree
 import (
 	"hash/fnv"
 	"runtime"
-
-	"fluxruntime/internal/core"
 )
 
 type ShardedEngine struct {
 	shards []*Engine
-	count uint64
+	count  uint64
 }
 
 func NewSharded() *ShardedEngine {
 
 	n := runtime.NumCPU()
 
-	shards := make([]*Engine, n)
+	shards := make(
+		[]*Engine,
+		n,
+	)
 
 	for i := range shards {
-		shards[i] = NewEngine()
+		shards[i] = NewEngine(i)
 	}
 
 	return &ShardedEngine{
 		shards: shards,
-		count: uint64(n),
+		count:  uint64(n),
 	}
 }
 
@@ -49,11 +50,11 @@ func (s *ShardedEngine) route(
 }
 
 func (s *ShardedEngine) Submit(
-	req *core.RawRequest,
-) *core.RawResponse {
+	req *Request,
+) bool {
 
 	engine := s.route(
-		req.QueryHash,
+		req.Req.QueryHash,
 	)
 
 	return engine.Submit(req)
