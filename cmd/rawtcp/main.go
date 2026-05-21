@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 
@@ -176,16 +178,33 @@ func handle(
 
 func main() {
 
+	port := os.Getenv("PORT")
+
+	if port == "" {
+		port = "7001"
+	}
+
+	_, err := strconv.Atoi(port)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	addr := ":" + port
+
 	ln, err := net.Listen(
 		"tcp",
-		":7001",
+		addr,
 	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Println("🔥 rawtcp runtime listening on :7001")
+	log.Println(
+		"🔥 rawtcp runtime listening on",
+		addr,
+	)
 
 	for {
 

@@ -31,7 +31,7 @@ func worker(
 
 	conn, err := net.Dial(
 		"tcp",
-		"localhost:7001",
+		"localhost:8000",
 	)
 
 	if err != nil {
