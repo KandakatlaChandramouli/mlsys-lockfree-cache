@@ -119,6 +119,7 @@ func (h *HNSWIndex) Add(
 }
 
 
+
 func (h *HNSWIndex) Search(
     query []float32,
     topK int,
@@ -131,37 +132,51 @@ func (h *HNSWIndex) Search(
         return nil
     }
 
-    best := make(
-        []vectorstore.SearchResult,
-        len(h.nodes),
-    )
+    best := [BeamWidth * 8]vectorstore.SearchResult{}
 
-    for i, node := range h.nodes {
+    bestCount := 0
+
+    for _, node := range h.nodes {
 
         score := cosine(
             query,
             node.Embedding,
         )
 
-        best[i] = vectorstore.SearchResult{
-            ID: node.ID,
-            Score: score,
+        if bestCount < len(best) {
+
+            best[bestCount] = vectorstore.SearchResult{
+                ID: node.ID,
+                Score: score,
+            }
+
+            bestCount++
         }
     }
 
     sort.Slice(
-        best,
+        best[:bestCount],
         func(i, j int) bool {
             return best[i].Score >
                    best[j].Score
         },
     )
 
-    if len(best) > topK {
-        best = best[:topK]
+    if topK > bestCount {
+        topK = bestCount
     }
 
-    return best
+    out := make(
+        []vectorstore.SearchResult,
+        topK,
+    )
+
+    copy(
+        out,
+        best[:topK],
+    )
+
+    return out
 }
 
 func cosine(
