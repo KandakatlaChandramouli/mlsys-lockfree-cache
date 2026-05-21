@@ -3,3 +3,5 @@
 bench.log
 server.log
 vectors.wal
+wal/
+real-inference-runtime
