@@ -4,45 +4,74 @@ import (
     "fluxruntime/internal/avx"
 )
 
-func L2(
-    a []float32,
-    b []float32,
+type Centroid struct {
+    Vec  []float32
+    Norm float32
+}
+
+func norm(
+    v []float32,
 ) float32 {
 
-    var aa float32
-    var bb float32
+    var out float32
 
-    for i := range a {
-        aa += a[i] * a[i]
-        bb += b[i] * b[i]
+    for i := range v {
+        out += v[i] * v[i]
     }
 
-    dot := avx.DotProduct(
-        a,
-        b,
+    return out
+}
+
+func Build(
+    centroids [][]float32,
+) []Centroid {
+
+    out := make(
+        []Centroid,
+        len(centroids),
     )
 
-    return aa + bb - 2*dot
+    for i := range centroids {
+
+        out[i] = Centroid{
+            Vec: centroids[i],
+            Norm: norm(
+                centroids[i],
+            ),
+        }
+    }
+
+    return out
 }
 
 func Nearest(
     vec []float32,
-    centroids [][]float32,
+    centroids []Centroid,
 ) int {
+
+    queryNorm := norm(
+        vec,
+    )
 
     best := 0
 
-    bestDist := L2(
-        vec,
-        centroids[0],
-    )
+    bestDist :=
+        queryNorm +
+        centroids[0].Norm -
+        2*avx.DotProduct(
+            vec,
+            centroids[0].Vec,
+        )
 
     for i := 1; i < len(centroids); i++ {
 
-        d := L2(
-            vec,
-            centroids[i],
-        )
+        d :=
+            queryNorm +
+            centroids[i].Norm -
+            2*avx.DotProduct(
+                vec,
+                centroids[i].Vec,
+            )
 
         if d < bestDist {
             bestDist = d

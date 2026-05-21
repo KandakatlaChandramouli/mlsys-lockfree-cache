@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -31,14 +30,18 @@ func randomVector() []float32 {
 
 func main() {
 
-    centroids := make(
+    raw := make(
         [][]float32,
         Centroids,
     )
 
-    for i := range centroids {
-        centroids[i] = randomVector()
+    for i := range raw {
+        raw[i] = randomVector()
     }
+
+    centroids := kmeans.Build(
+        raw,
+    )
 
     start := time.Now()
 
