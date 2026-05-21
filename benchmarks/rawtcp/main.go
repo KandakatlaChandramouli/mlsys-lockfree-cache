@@ -7,15 +7,20 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 var (
 	concurrency = flag.Int("concurrency", 8, "")
-	duration = flag.Duration("duration", 10*time.Second, "")
-	tokens = flag.Int("tokens", 64, "")
+	duration    = flag.Duration("duration", 10*time.Second, "")
+	tokens      = flag.Int("tokens", 64, "")
 )
+
+var latencies []int64
+var latMu sync.Mutex
 
 func worker(
 	ctx context.Context,
@@ -46,6 +51,8 @@ func worker(
 
 		default:
 		}
+
+		start := time.Now()
 
 		hash := uint64(
 			time.Now().UnixNano(),
@@ -113,8 +120,40 @@ func worker(
 			continue
 		}
 
+		lat := time.Since(start)
+
+		latMu.Lock()
+
+		latencies = append(
+			latencies,
+			lat.Nanoseconds(),
+		)
+
+		latMu.Unlock()
+
 		reqs.Add(1)
 	}
+}
+
+func percentile(
+	p float64,
+) time.Duration {
+
+	if len(latencies) == 0 {
+		return 0
+	}
+
+	idx := int(
+		float64(len(latencies)) * p,
+	)
+
+	if idx >= len(latencies) {
+		idx = len(latencies) - 1
+	}
+
+	return time.Duration(
+		latencies[idx],
+	)
 }
 
 func main() {
@@ -143,6 +182,13 @@ func main() {
 
 	<-ctx.Done()
 
+	sort.Slice(
+		latencies,
+		func(i, j int) bool {
+			return latencies[i] < latencies[j]
+		},
+	)
+
 	rps := float64(
 		reqs.Load(),
 	) / duration.Seconds()
@@ -164,6 +210,23 @@ func main() {
 	fmt.Printf(
 		"Failures %d\n",
 		fail.Load(),
+	)
+
+	fmt.Println("")
+
+	fmt.Printf(
+		"p50 %v\n",
+		percentile(0.50),
+	)
+
+	fmt.Printf(
+		"p95 %v\n",
+		percentile(0.95),
+	)
+
+	fmt.Printf(
+		"p99 %v\n",
+		percentile(0.99),
 	)
 
 	fmt.Println("")

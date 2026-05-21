@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"sync/atomic"
+	"syscall"
 
 	"fluxruntime/internal/core"
 	"fluxruntime/internal/lockfree"
@@ -42,7 +43,9 @@ func handle(
 
 		if err != nil {
 
-			if err != io.EOF {
+			if err != io.EOF &&
+				err != syscall.ECONNRESET {
+
 				log.Println(err)
 			}
 
@@ -72,8 +75,8 @@ func handle(
 			&lockfree.Request{
 				Req: &core.RawRequest{
 					QueryHash: hdr.QueryHash,
-					Tokens: tokens,
-					ConnID: connID,
+					Tokens:    tokens,
+					ConnID:    connID,
 				},
 
 				Callback: func(

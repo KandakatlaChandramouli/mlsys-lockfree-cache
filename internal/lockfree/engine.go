@@ -14,13 +14,28 @@ type Request struct {
 type Engine struct {
 	ring   *Ring
 	worker *core.Worker
+
+	batch []*Request
+	reqs  []*core.RawRequest
 }
 
-func NewEngine(id int) *Engine {
+func NewEngine(
+	id int,
+) *Engine {
 
 	e := &Engine{
 		ring:   NewRing(),
 		worker: core.NewWorker(id),
+
+		batch: make(
+			[]*Request,
+			core.MaxBatchSize,
+		),
+
+		reqs: make(
+			[]*core.RawRequest,
+			core.MaxBatchSize,
+		),
 	}
 
 	go e.loop()
@@ -50,12 +65,6 @@ func (e *Engine) Submit(
 
 func (e *Engine) loop() {
 
-	batch := make(
-		[]*Request,
-		0,
-		core.MaxBatchSize,
-	)
-
 	for {
 
 		v, ok := e.ring.Pop()
@@ -67,14 +76,21 @@ func (e *Engine) loop() {
 			continue
 		}
 
-		batch = batch[:0]
+		n := 0
 
-		batch = append(
-			batch,
-			v.(*Request),
-		)
+		e.batch[n] = v.(*Request)
 
-		for len(batch) < core.MaxBatchSize {
+		n++
+
+	flush:
+
+		for n < core.MaxBatchSize {
+
+			select {
+
+			default:
+				break flush
+			}
 
 			v, ok := e.ring.Pop()
 
@@ -82,27 +98,24 @@ func (e *Engine) loop() {
 				break
 			}
 
-			batch = append(
-				batch,
-				v.(*Request),
-			)
+			e.batch[n] = v.(*Request)
+
+			n++
 		}
 
-		reqs := make(
-			[]*core.RawRequest,
-			len(batch),
-		)
-
-		for i := range batch {
-			reqs[i] = batch[i].Req
+		for i := 0; i < n; i++ {
+			e.reqs[i] = e.batch[i].Req
 		}
 
 		resps := e.worker.InferBatch(
-			reqs,
+			e.reqs[:n],
 		)
 
-		for i := range batch {
-			batch[i].Callback(resps[i])
+		for i := 0; i < n; i++ {
+
+			e.batch[i].Callback(
+				resps[i],
+			)
 		}
 	}
 }

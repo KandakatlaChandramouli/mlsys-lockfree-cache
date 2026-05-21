@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	ProcessingDelay = 150 * time.Microsecond
-	MaxBatchSize    = 32
+	ProcessingDelay = 100 * time.Microsecond
+	MaxBatchSize    = 64
 )
 
 type RawRequest struct {
@@ -27,7 +27,7 @@ type Worker struct {
 var vectorPool = sync.Pool{
 	New: func() any {
 
-		v := make([]float32, 0, 512)
+		v := make([]float32, 512)
 
 		return &v
 	},
@@ -54,8 +54,6 @@ func AcquireVector(
 func ReleaseVector(
 	v *[]float32,
 ) {
-
-	*v = (*v)[:0]
 
 	vectorPool.Put(v)
 }
