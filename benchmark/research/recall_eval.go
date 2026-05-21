@@ -154,7 +154,10 @@ func main() {
                 "vec-%d",
                 i,
             ),
-            v,
+            append(
+                []float32(nil),
+                v...,
+            ),
         )
     }
 
