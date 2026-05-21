@@ -6,7 +6,7 @@ import (
 	"context"
 	"net"
 	"sync/atomic"
-	"time"
+	
 
 	"fluxruntime/internal/core"
 	"fluxruntime/internal/metrics"
@@ -99,9 +99,7 @@ func (s *Server) handle(
 		default:
 		}
 
-		start := time.Now()
-
-		text, err := protocol.ReadString(
+				text, err := protocol.ReadString(
 			reader,
 		)
 
@@ -139,10 +137,8 @@ func (s *Server) handle(
 			return
 		}
 
-		s.m.RecordRequest(
-			time.Since(start),
-		)
+		s.m.RecordRequest()
 
-		s.reqs.Add(1)
+                s.reqs.Add(1)
 	}
 }
