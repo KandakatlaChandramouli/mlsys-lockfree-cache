@@ -5,16 +5,60 @@ import (
     "bufio"
     "fmt"
     "os"
+
+    "fluxruntime/internal/segment"
 )
 
+const MaxEntries = 10000
+
 type Log struct {
+    dir     string
+    segment int
+    entries int
+
     file *os.File
     w    *bufio.Writer
 }
 
 func Open(
-    path string,
+    dir string,
 ) (*Log, error) {
+
+    if err := os.MkdirAll(
+        dir,
+        0755,
+    ); err != nil {
+        return nil, err
+    }
+
+    l := &Log{
+        dir: dir,
+    }
+
+    if err := l.rotate(); err != nil {
+        return nil, err
+    }
+
+    return l, nil
+}
+
+func (l *Log) rotate() error {
+
+    if l.file != nil {
+
+        if err := l.Sync(); err != nil {
+            return err
+        }
+
+        if err := l.file.Close(); err != nil {
+            return err
+        }
+    }
+
+    path := segment.File(
+        l.dir,
+        l.segment,
+    )
 
     f, err := os.OpenFile(
         path,
@@ -25,21 +69,32 @@ func Open(
     )
 
     if err != nil {
-        return nil, err
+        return err
     }
 
-    return &Log{
-        file: f,
-        w: bufio.NewWriterSize(
-            f,
-            1<<20,
-        ),
-    }, nil
+    l.file = f
+
+    l.w = bufio.NewWriterSize(
+        f,
+        1<<20,
+    )
+
+    l.entries = 0
+    l.segment++
+
+    return nil
 }
 
 func (l *Log) Append(
     id string,
 ) error {
+
+    if l.entries >= MaxEntries {
+
+        if err := l.rotate(); err != nil {
+            return err
+        }
+    }
 
     _, err := fmt.Fprintf(
         l.w,
@@ -47,7 +102,13 @@ func (l *Log) Append(
         id,
     )
 
-    return err
+    if err != nil {
+        return err
+    }
+
+    l.entries++
+
+    return nil
 }
 
 func (l *Log) Sync() error {
