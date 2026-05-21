@@ -5,14 +5,11 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
-	
+	"net"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"fluxruntime/internal/cluster"
-	"fluxruntime/internal/pool"
 )
 
 var (
@@ -21,54 +18,47 @@ var (
 	tokens      = flag.Int("tokens", 64, "")
 )
 
+var nodes = []string{
+	"localhost:7001",
+	"localhost:7002",
+	"localhost:7003",
+}
+
 var (
 	latencies []int64
 	latMu     sync.Mutex
 )
 
-var scheduler = cluster.NewScheduler(
-	[]string{
-		"localhost:7001",
-		"localhost:7002",
-		"localhost:7003",
-	},
-)
-
 func worker(
 	ctx context.Context,
+	id int,
 	reqs *atomic.Uint64,
 	fail *atomic.Uint64,
 	tokenCount int,
 ) {
 
-	node := scheduler.Pick()
+	target := nodes[
+		id%len(nodes)
+	]
 
-	
-p := pool.GetPool(
-		node.Addr,
+	conn, err := net.Dial(
+		"tcp",
+		target,
 	)
 
-conn := p.Get()
+	if err != nil {
+		fail.Add(1)
+		return
+	}
 
-if conn == nil {
+	defer conn.Close()
 
-	fail.Add(1)
-
-	return
-}
-
-defer func() {
-
-	p.Put(conn)
-
-	scheduler.Complete(node)
-
-}()
-        
-toks := make(
+	toks := make(
 		[]uint32,
 		tokenCount,
 	)
+
+	var err2 error
 
 	for {
 
@@ -80,66 +70,64 @@ toks := make(
 		default:
 		}
 
-		var err error
-
 		start := time.Now()
 
 		hash := uint64(
 			time.Now().UnixNano(),
 		)
 
-		err = binary.Write(
+		err2 = binary.Write(
 			conn,
 			binary.LittleEndian,
 			hash,
 		)
 
-		if err != nil {
+		if err2 != nil {
 
 			fail.Add(1)
 
-			continue
+			return
 		}
 
-		err = binary.Write(
+		err2 = binary.Write(
 			conn,
 			binary.LittleEndian,
 			uint32(tokenCount),
 		)
 
-		if err != nil {
+		if err2 != nil {
 
 			fail.Add(1)
 
-			continue
+			return
 		}
 
-		err = binary.Write(
+		err2 = binary.Write(
 			conn,
 			binary.LittleEndian,
 			toks,
 		)
 
-		if err != nil {
+		if err2 != nil {
 
 			fail.Add(1)
 
-			continue
+			return
 		}
 
 		var vecLen uint32
 
-		err = binary.Read(
+		err2 = binary.Read(
 			conn,
 			binary.LittleEndian,
 			&vecLen,
 		)
 
-		if err != nil {
+		if err2 != nil {
 
 			fail.Add(1)
 
-			continue
+			return
 		}
 
 		vec := make(
@@ -147,17 +135,17 @@ toks := make(
 			vecLen,
 		)
 
-		err = binary.Read(
+		err2 = binary.Read(
 			conn,
 			binary.LittleEndian,
 			&vec,
 		)
 
-		if err != nil {
+		if err2 != nil {
 
 			fail.Add(1)
 
-			continue
+			return
 		}
 
 		lat := time.Since(start)
@@ -214,6 +202,7 @@ func main() {
 
 		go worker(
 			ctx,
+			i,
 			&reqs,
 			&fail,
 			*tokens,
@@ -234,7 +223,7 @@ func main() {
 	) / duration.Seconds()
 
 	fmt.Println("")
-	fmt.Println("==== ADAPTIVE DISTRIBUTED BENCHMARK ====")
+	fmt.Println("==== STABILIZED DISTRIBUTED BENCHMARK ====")
 	fmt.Println("")
 
 	fmt.Printf(
