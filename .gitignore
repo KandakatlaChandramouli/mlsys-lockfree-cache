@@ -2,3 +2,4 @@
 *.prof
 bench.log
 server.log
+vectors.wal
