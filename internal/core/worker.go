@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	DefaultMaxBatchSize = 32
-	DefaultBatchTimeout = 5 * time.Millisecond
+	DefaultMaxBatchSize = 128
+	DefaultBatchTimeout = 2 * time.Millisecond
 	DefaultQueueDepth   = 4096
 
 	NumShards = 4
