@@ -1,18 +1,20 @@
-
 package avx
+
+import "fluxruntime/internal/asm"
 
 func DotProduct(
     a []float32,
     b []float32,
 ) float32 {
 
-    var out float32
-
     n := len(a)
 
-    for i := 0; i < n; i++ {
-        out += a[i] * b[i]
+    if n == 0 {
+        return 0
     }
 
-    return out
+    return asm.DotProductAVX2(
+        a,
+        b,
+    )
 }
