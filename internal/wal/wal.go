@@ -64,7 +64,7 @@ func (l *Log) rotate() error {
         path,
         os.O_CREATE|
             os.O_WRONLY|
-            os.O_APPEND,
+            os.O_TRUNC,
         0644,
     )
 
