@@ -16,7 +16,7 @@ const (
 	DefaultBatchTimeout = 2 * time.Millisecond
 	DefaultQueueDepth   = 4096
 
-	NumShards = 4
+	NumShards = 8
 )
 
 type WorkerConfig struct {
