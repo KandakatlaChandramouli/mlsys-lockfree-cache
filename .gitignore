@@ -6,3 +6,4 @@ vectors.wal
 wal/
 real-inference-runtime
 snapshot.bin
+wal.compacted
