@@ -38,6 +38,8 @@ type Batch struct {
 type Model struct {
 	mu          sync.Mutex
 	session     *ort.DynamicAdvancedSession
+	inputNames  []string
+	outputNames []string
 	modelPath   string
 	initialized bool
 }
@@ -101,6 +103,8 @@ func (m *Model) Load() error {
 	}
 
 	m.session = session
+	m.inputNames = inputNames
+	m.outputNames = outputNames
 	m.initialized = true
 
 	return nil
@@ -149,6 +153,61 @@ func (m *Model) RunBatch(
 			input[base+j] = int64(tok)
 			mask[base+j] = 1
 		}
+	}
+
+	inputTensor, err := ort.NewTensor(
+		ort.NewShape(
+			int64(batch.Size),
+			MaxSeqLen,
+		),
+		input,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	defer inputTensor.Destroy()
+
+	maskTensor, err := ort.NewTensor(
+		ort.NewShape(
+			int64(batch.Size),
+			MaxSeqLen,
+		),
+		mask,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	defer maskTensor.Destroy()
+
+	outputTensor, err := ort.NewEmptyTensor[float32](
+		ort.NewShape(
+			int64(batch.Size),
+			EmbeddingDim,
+		),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	defer outputTensor.Destroy()
+
+	err = m.session.Run(
+		[]ort.Value{
+			inputTensor,
+			maskTensor,
+		},
+		[]ort.Value{
+			outputTensor,
+		},
+	)
+
+	if err != nil {
+		return err
 	}
 
 	for _, req := range batch.Requests {
