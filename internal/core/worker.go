@@ -1,125 +1,47 @@
 package core
 
-import (
-	"context"
-	"sync"
-	"time"
+import "time"
 
-	routerv1 "fluxruntime/proto/v1"
-)
+const processingDelay = 200 * time.Microsecond
 
-const (
-	workerQueueDepth = 256
-	processingDelay  = 100 * time.Microsecond
-)
-
-var vectorPool = sync.Pool{
-	New: func() any {
-		buf := make([]float32, 64)
-		return &buf
-	},
+type RawRequest struct {
+	QueryHash uint64
+	Tokens []uint32
 }
 
-type Job struct {
-	Req    *routerv1.RouteRequest
-	Result chan<- Result
-	Ctx    context.Context
-}
-
-type Result struct {
-	Resp *routerv1.RouteResponse
-	Err  error
+type RawResponse struct {
+	Vector []float32
 }
 
 type Worker struct {
-	id    int
-	queue chan Job
-	done  chan struct{}
+	id int
 }
 
-func NewWorker(id int) *Worker {
-	w := &Worker{
-		id:    id,
-		queue: make(chan Job, workerQueueDepth),
-		done:  make(chan struct{}),
-	}
+func NewWorker(
+	id int,
+) *Worker {
 
-	go w.run()
-
-	return w
-}
-
-func (w *Worker) Enqueue(ctx context.Context, job Job) bool {
-
-	select {
-
-	case w.queue <- job:
-		return true
-
-	case <-ctx.Done():
-		return false
-
-	default:
-		return false
+	return &Worker{
+		id: id,
 	}
 }
 
-func (w *Worker) Shutdown() {
-	close(w.queue)
-	<-w.done
-}
+func (w *Worker) InferRaw(
+	req *RawRequest,
+) *RawResponse {
 
-func (w *Worker) run() {
+	time.Sleep(processingDelay)
 
-	defer close(w.done)
-
-	for job := range w.queue {
-		w.process(job)
-	}
-}
-
-func (w *Worker) process(job Job) {
-
-	resp, err := w.infer(job.Ctx, job.Req)
-
-	job.Result <- Result{
-		Resp: resp,
-		Err:  err,
-	}
-}
-
-func (w *Worker) infer(
-	ctx context.Context,
-	req *routerv1.RouteRequest,
-) (*routerv1.RouteResponse, error) {
-
-	select {
-
-	case <-ctx.Done():
-		return nil, ctx.Err()
-
-	case <-time.After(processingDelay):
-	}
-
-	bufPtr := vectorPool.Get().(*[]float32)
-
-	vec := *bufPtr
-
-	if len(vec) < len(req.Tokens) {
-		vec = make([]float32, len(req.Tokens))
-	}
-
-	vec = vec[:len(req.Tokens)]
+	vec := make(
+		[]float32,
+		len(req.Tokens),
+	)
 
 	for i := range vec {
 		vec[i] = float32(i) * 0.1
 	}
 
-	resp := &routerv1.RouteResponse{
+	return &RawResponse{
 		Vector: vec,
 	}
-
-	vectorPool.Put(&vec)
-
-	return resp, nil
 }

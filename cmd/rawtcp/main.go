@@ -5,12 +5,17 @@ import (
 	"io"
 	"log"
 	"net"
+
+	"fluxruntime/internal/core"
+	"fluxruntime/internal/lockfree"
 )
 
-type Request struct {
+type Header struct {
 	QueryHash uint64
 	TokenCount uint32
 }
+
+var engine = lockfree.NewEngine()
 
 func handle(
 	conn net.Conn,
@@ -20,12 +25,12 @@ func handle(
 
 	for {
 
-		var req Request
+		var hdr Header
 
 		err := binary.Read(
 			conn,
 			binary.LittleEndian,
-			&req,
+			&hdr,
 		)
 
 		if err != nil {
@@ -39,7 +44,7 @@ func handle(
 
 		tokens := make(
 			[]uint32,
-			req.TokenCount,
+			hdr.TokenCount,
 		)
 
 		err = binary.Read(
@@ -52,7 +57,16 @@ func handle(
 			return
 		}
 
-		vecLen := uint32(len(tokens))
+		req := &core.RawRequest{
+			QueryHash: hdr.QueryHash,
+			Tokens: tokens,
+		}
+
+		resp := engine.Submit(req)
+
+		vecLen := uint32(
+			len(resp.Vector),
+		)
 
 		err = binary.Write(
 			conn,
@@ -64,19 +78,10 @@ func handle(
 			return
 		}
 
-		resp := make(
-			[]float32,
-			vecLen,
-		)
-
-		for i := range resp {
-			resp[i] = float32(i) * 0.1
-		}
-
 		err = binary.Write(
 			conn,
 			binary.LittleEndian,
-			resp,
+			resp.Vector,
 		)
 
 		if err != nil {
