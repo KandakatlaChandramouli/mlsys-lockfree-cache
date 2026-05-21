@@ -3,7 +3,7 @@ module fluxruntime
 go 1.24.3
 
 require (
-	github.com/yalue/onnxruntime_go v1.30.1
+	github.com/yalue/onnxruntime_go v1.22.0
 	google.golang.org/grpc v1.72.2
 	google.golang.org/protobuf v1.36.8
 )
