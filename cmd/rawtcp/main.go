@@ -6,13 +6,16 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"sync/atomic"
 	"syscall"
 
 	"fluxruntime/internal/core"
+	"fluxruntime/internal/health"
 	"fluxruntime/internal/lockfree"
+	"fluxruntime/internal/metrics"
 )
 
 type Header struct {
@@ -52,6 +55,9 @@ func writerLoop(
 		)
 
 		if err != nil {
+
+			metrics.Failures.Add(1)
+
 			return
 		}
 
@@ -62,18 +68,27 @@ func writerLoop(
 		)
 
 		if err != nil {
+
+			metrics.Failures.Add(1)
+
 			return
 		}
 
 		err = writer.Flush()
 
 		if err != nil {
+
+			metrics.Failures.Add(1)
+
 			return
 		}
 
 		core.ReleaseVector(
 			&resp.Vector,
 		)
+
+		metrics.Requests.Add(1)
+		metrics.QueuedRequests.Add(^uint64(0))
 	}
 }
 
@@ -81,7 +96,12 @@ func handle(
 	conn net.Conn,
 ) {
 
-	defer conn.Close()
+	metrics.ActiveConnections.Add(1)
+
+	defer func() {
+		metrics.ActiveConnections.Add(^uint64(0))
+		conn.Close()
+	}()
 
 	reader := bufio.NewReaderSize(
 		conn,
@@ -121,6 +141,8 @@ func handle(
 				err != syscall.ECONNRESET {
 
 				log.Println(err)
+
+				metrics.Failures.Add(1)
 			}
 
 			return
@@ -137,6 +159,9 @@ func handle(
 		)
 
 		if err != nil {
+
+			metrics.Failures.Add(1)
+
 			return
 		}
 
@@ -146,6 +171,8 @@ func handle(
 		)
 
 		reqID := reqCounter.Add(1)
+
+		metrics.QueuedRequests.Add(1)
 
 		ok := engine.Submit(
 			&lockfree.Request{
@@ -162,6 +189,9 @@ func handle(
 		)
 
 		if !ok {
+
+			metrics.Failures.Add(1)
+
 			return
 		}
 
@@ -176,7 +206,33 @@ func handle(
 	}
 }
 
+func metricsServer() {
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc(
+		"/metrics",
+		metrics.Handler,
+	)
+
+	mux.HandleFunc(
+		"/health",
+		health.Handler,
+	)
+
+	log.Println(
+		"🔥 metrics server listening on :9000",
+	)
+
+	http.ListenAndServe(
+		":9000",
+		mux,
+	)
+}
+
 func main() {
+
+	go metricsServer()
 
 	port := os.Getenv("PORT")
 

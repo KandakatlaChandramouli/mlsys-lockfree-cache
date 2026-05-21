@@ -1,45 +1,46 @@
 package metrics
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
+	"encoding/json"
+	"net/http"
+	"sync/atomic"
 )
 
 var (
-	RequestsTotal = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "runtime_requests_total",
-			Help: "Total requests processed",
-		},
-	)
-
-	RequestFailures = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "runtime_request_failures_total",
-			Help: "Total failed requests",
-		},
-	)
-
-	RequestLatency = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Name:    "runtime_request_latency_seconds",
-			Help:    "Request latency",
-			Buckets: prometheus.DefBuckets,
-		},
-	)
-
-	WorkerQueueDepth = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "runtime_worker_queue_depth",
-			Help: "Current queue depth per worker",
-		},
-		[]string{"worker"},
-	)
+	Requests atomic.Uint64
+	Failures atomic.Uint64
+	ActiveConnections atomic.Uint64
+	QueuedRequests atomic.Uint64
 )
 
-func Register() {
+type Snapshot struct {
+	Requests         uint64 `json:"requests"`
+	Failures         uint64 `json:"failures"`
+	ActiveConnections uint64 `json:"active_connections"`
+	QueuedRequests   uint64 `json:"queued_requests"`
+}
 
-	prometheus.MustRegister(RequestsTotal)
-	prometheus.MustRegister(RequestFailures)
-	prometheus.MustRegister(RequestLatency)
-	prometheus.MustRegister(WorkerQueueDepth)
+func Stats() Snapshot {
+
+	return Snapshot{
+		Requests: Requests.Load(),
+		Failures: Failures.Load(),
+		ActiveConnections: ActiveConnections.Load(),
+		QueuedRequests: QueuedRequests.Load(),
+	}
+}
+
+func Handler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	w.Header().Set(
+		"Content-Type",
+		"application/json",
+	)
+
+	json.NewEncoder(w).Encode(
+		Stats(),
+	)
 }
