@@ -5,14 +5,14 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
-	"log"
-	"net"
+	
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"fluxruntime/internal/cluster"
+	"fluxruntime/internal/pool"
 )
 
 var (
@@ -43,22 +43,29 @@ func worker(
 
 	node := scheduler.Pick()
 
-	defer scheduler.Complete(
-		node,
-	)
-
-	conn, err := net.Dial(
-		"tcp",
+	
+p := pool.GetPool(
 		node.Addr,
 	)
 
-	if err != nil {
-		log.Fatal(err)
-	}
+conn := p.Get()
 
-	defer conn.Close()
+if conn == nil {
 
-	toks := make(
+	fail.Add(1)
+
+	return
+}
+
+defer func() {
+
+	p.Put(conn)
+
+	scheduler.Complete(node)
+
+}()
+        
+toks := make(
 		[]uint32,
 		tokenCount,
 	)
@@ -72,6 +79,8 @@ func worker(
 
 		default:
 		}
+
+		var err error
 
 		start := time.Now()
 
