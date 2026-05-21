@@ -41,6 +41,10 @@ func worker(
 		return
 	}
 
+	tcpConn := conn.(*net.TCPConn)
+
+	tcpConn.SetNoDelay(true)
+
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
