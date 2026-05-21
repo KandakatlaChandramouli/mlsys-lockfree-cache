@@ -167,26 +167,10 @@ func main() {
 
         start := time.Now()
 
-        raw := idx.Search(
+        pred := idx.Search(
             q,
             TopK,
         )
-
-        pred := make(
-            []vectorstore.SearchResult,
-            0,
-            len(raw),
-        )
-
-        for _, r := range raw {
-
-            pred = append(
-                pred,
-                vectorstore.SearchResult{
-                    ID: r.ID,
-                },
-            )
-        }
 
         hist.Record(
             start,
