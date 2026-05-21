@@ -1,226 +1,264 @@
-
 package main
 
 import (
-    "context"
-    "encoding/binary"
-    "flag"
-    "fmt"
-    "log"
-    "net"
-    "sort"
-    "sync"
-    "sync/atomic"
-    "time"
+	"context"
+	"encoding/binary"
+	"flag"
+	"fmt"
+	"log"
+	"net"
+	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"fluxruntime/internal/cluster"
 )
 
 var (
-    concurrency = flag.Int("concurrency", 8, "")
-    duration = flag.Duration("duration", 10*time.Second, "")
-    tokens = flag.Int("tokens", 64, "")
+	concurrency = flag.Int("concurrency", 8, "")
+	duration    = flag.Duration("duration", 10*time.Second, "")
+	tokens      = flag.Int("tokens", 64, "")
 )
 
-var nodes = []string{
-    "localhost:7001",
-    "localhost:7002",
-    "localhost:7003",
-}
+var (
+	latencies []int64
+	latMu     sync.Mutex
+)
 
-var latencies []int64
-var latMu sync.Mutex
+var scheduler = cluster.NewScheduler(
+	[]string{
+		"localhost:7001",
+		"localhost:7002",
+		"localhost:7003",
+	},
+)
 
 func worker(
-    ctx context.Context,
-    id int,
-    reqs *atomic.Uint64,
-    fail *atomic.Uint64,
-    tokenCount int,
+	ctx context.Context,
+	reqs *atomic.Uint64,
+	fail *atomic.Uint64,
+	tokenCount int,
 ) {
-    target := nodes[id%len(nodes)]
 
-    conn, err := net.Dial("tcp", target)
+	node := scheduler.Pick()
 
-    if err != nil {
-        log.Fatal(err)
-    }
+	defer scheduler.Complete(
+		node,
+	)
 
-    defer conn.Close()
+	conn, err := net.Dial(
+		"tcp",
+		node.Addr,
+	)
 
-    toks := make([]uint32, tokenCount)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    for {
-        select {
-        case <-ctx.Done():
-            return
-        default:
-        }
+	defer conn.Close()
 
-        start := time.Now()
+	toks := make(
+		[]uint32,
+		tokenCount,
+	)
 
-        hash := uint64(time.Now().UnixNano())
+	for {
 
-        err = binary.Write(
-            conn,
-            binary.LittleEndian,
-            hash,
-        )
+		select {
 
-        if err != nil {
-            fail.Add(1)
-            continue
-        }
+		case <-ctx.Done():
+			return
 
-        err = binary.Write(
-            conn,
-            binary.LittleEndian,
-            uint32(tokenCount),
-        )
+		default:
+		}
 
-        if err != nil {
-            fail.Add(1)
-            continue
-        }
+		start := time.Now()
 
-        err = binary.Write(
-            conn,
-            binary.LittleEndian,
-            toks,
-        )
+		hash := uint64(
+			time.Now().UnixNano(),
+		)
 
-        if err != nil {
-            fail.Add(1)
-            continue
-        }
+		err = binary.Write(
+			conn,
+			binary.LittleEndian,
+			hash,
+		)
 
-        var vecLen uint32
+		if err != nil {
 
-        err = binary.Read(
-            conn,
-            binary.LittleEndian,
-            &vecLen,
-        )
+			fail.Add(1)
 
-        if err != nil {
-            fail.Add(1)
-            continue
-        }
+			continue
+		}
 
-        vec := make([]float32, vecLen)
+		err = binary.Write(
+			conn,
+			binary.LittleEndian,
+			uint32(tokenCount),
+		)
 
-        err = binary.Read(
-            conn,
-            binary.LittleEndian,
-            &vec,
-        )
+		if err != nil {
 
-        if err != nil {
-            fail.Add(1)
-            continue
-        }
+			fail.Add(1)
 
-        lat := time.Since(start)
+			continue
+		}
 
-        latMu.Lock()
-        latencies = append(
-            latencies,
-            lat.Nanoseconds(),
-        )
-        latMu.Unlock()
+		err = binary.Write(
+			conn,
+			binary.LittleEndian,
+			toks,
+		)
 
-        reqs.Add(1)
-    }
+		if err != nil {
+
+			fail.Add(1)
+
+			continue
+		}
+
+		var vecLen uint32
+
+		err = binary.Read(
+			conn,
+			binary.LittleEndian,
+			&vecLen,
+		)
+
+		if err != nil {
+
+			fail.Add(1)
+
+			continue
+		}
+
+		vec := make(
+			[]float32,
+			vecLen,
+		)
+
+		err = binary.Read(
+			conn,
+			binary.LittleEndian,
+			&vec,
+		)
+
+		if err != nil {
+
+			fail.Add(1)
+
+			continue
+		}
+
+		lat := time.Since(start)
+
+		latMu.Lock()
+
+		latencies = append(
+			latencies,
+			lat.Nanoseconds(),
+		)
+
+		latMu.Unlock()
+
+		reqs.Add(1)
+	}
 }
 
 func percentile(
-    p float64,
+	p float64,
 ) time.Duration {
 
-    if len(latencies) == 0 {
-        return 0
-    }
+	if len(latencies) == 0 {
+		return 0
+	}
 
-    idx := int(float64(len(latencies)) * p)
+	idx := int(
+		float64(len(latencies)) * p,
+	)
 
-    if idx >= len(latencies) {
-        idx = len(latencies) - 1
-    }
+	if idx >= len(latencies) {
+		idx = len(latencies) - 1
+	}
 
-    return time.Duration(latencies[idx])
+	return time.Duration(
+		latencies[idx],
+	)
 }
 
 func main() {
 
-    flag.Parse()
+	flag.Parse()
 
-    ctx, cancel := context.WithTimeout(
-        context.Background(),
-        *duration,
-    )
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		*duration,
+	)
 
-    defer cancel()
+	defer cancel()
 
-    var reqs atomic.Uint64
-    var fail atomic.Uint64
+	var reqs atomic.Uint64
+	var fail atomic.Uint64
 
-    for i := 0; i < *concurrency; i++ {
+	for i := 0; i < *concurrency; i++ {
 
-        go worker(
-            ctx,
-            i,
-            &reqs,
-            &fail,
-            *tokens,
-        )
-    }
+		go worker(
+			ctx,
+			&reqs,
+			&fail,
+			*tokens,
+		)
+	}
 
-    <-ctx.Done()
+	<-ctx.Done()
 
-    sort.Slice(
-        latencies,
-        func(i, j int) bool {
-            return latencies[i] < latencies[j]
-        },
-    )
+	sort.Slice(
+		latencies,
+		func(i, j int) bool {
+			return latencies[i] < latencies[j]
+		},
+	)
 
-    rps := float64(
-        reqs.Load(),
-    ) / duration.Seconds()
+	rps := float64(
+		reqs.Load(),
+	) / duration.Seconds()
 
-    fmt.Println("")
-    fmt.Println("==== DISTRIBUTED RAW TCP BENCHMARK ====")
-    fmt.Println("")
+	fmt.Println("")
+	fmt.Println("==== ADAPTIVE DISTRIBUTED BENCHMARK ====")
+	fmt.Println("")
 
-    fmt.Printf(
-        "Requests/sec %.2f\n",
-        rps,
-    )
+	fmt.Printf(
+		"Requests/sec %.2f\n",
+		rps,
+	)
 
-    fmt.Printf(
-        "Total Requests %d\n",
-        reqs.Load(),
-    )
+	fmt.Printf(
+		"Total Requests %d\n",
+		reqs.Load(),
+	)
 
-    fmt.Printf(
-        "Failures %d\n",
-        fail.Load(),
-    )
+	fmt.Printf(
+		"Failures %d\n",
+		fail.Load(),
+	)
 
-    fmt.Println("")
+	fmt.Println("")
 
-    fmt.Printf(
-        "p50 %v\n",
-        percentile(0.50),
-    )
+	fmt.Printf(
+		"p50 %v\n",
+		percentile(0.50),
+	)
 
-    fmt.Printf(
-        "p95 %v\n",
-        percentile(0.95),
-    )
+	fmt.Printf(
+		"p95 %v\n",
+		percentile(0.95),
+	)
 
-    fmt.Printf(
-        "p99 %v\n",
-        percentile(0.99),
-    )
+	fmt.Printf(
+		"p99 %v\n",
+		percentile(0.99),
+	)
 
-    fmt.Println("")
+	fmt.Println("")
 }
