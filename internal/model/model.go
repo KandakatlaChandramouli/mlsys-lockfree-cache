@@ -6,6 +6,8 @@ import (
 	"math"
 	"sync"
 
+	"fluxruntime/internal/mempool"
+
 	ort "github.com/yalue/onnxruntime_go"
 )
 
@@ -38,15 +40,20 @@ type Batch struct {
 type Model struct {
 	mu          sync.Mutex
 	session     *ort.DynamicAdvancedSession
-	inputNames  []string
-	outputNames []string
 	modelPath   string
 	initialized bool
+	inputNames  []string
+	outputNames []string
+
+	embPool *mempool.Float32Pool
 }
 
 func New(modelPath string) *Model {
 	return &Model{
 		modelPath: modelPath,
+		embPool: mempool.NewFloat32Pool(
+			EmbeddingDim,
+		),
 	}
 }
 
@@ -236,10 +243,7 @@ func (m *Model) RunBatch(
 
 	for batchIdx, req := range batch.Requests {
 
-		embedding := make(
-			[]float32,
-			EmbeddingDim,
-		)
+		embedding := m.embPool.Get()
 
 		base := batchIdx * MaxSeqLen * EmbeddingDim
 
