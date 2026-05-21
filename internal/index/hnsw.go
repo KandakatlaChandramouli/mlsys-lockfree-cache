@@ -150,14 +150,18 @@ func (h *HNSWIndex) Search(
     }
 
     sort.Slice(
-        best[:topK],
+        best,
         func(i, j int) bool {
             return best[i].Score >
                    best[j].Score
         },
     )
 
-    return best[:topK]
+    if len(best) > topK {
+        best = best[:topK]
+    }
+
+    return best
 }
 
 func cosine(
