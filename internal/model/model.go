@@ -87,7 +87,7 @@ func (m *Model) Load() error {
 
 	defer opts.Destroy()
 
-	opts.SetIntraOpNumThreads(2)
+	opts.SetIntraOpNumThreads(4)
 
 	session, err := ort.NewDynamicAdvancedSession(
 		m.modelPath,
