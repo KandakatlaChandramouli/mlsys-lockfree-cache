@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+    "bufio"
     "encoding/gob"
     "os"
 
@@ -26,17 +27,26 @@ func Save(
 
     defer f.Close()
 
-    enc := gob.NewEncoder(
+    w := bufio.NewWriterSize(
         f,
+        1<<20,
+    )
+
+    enc := gob.NewEncoder(
+        w,
     )
 
     snap := Snapshot{
         Nodes: idx.ExportNodes(),
     }
 
-    return enc.Encode(
+    if err := enc.Encode(
         snap,
-    )
+    ); err != nil {
+        return err
+    }
+
+    return w.Flush()
 }
 
 func Load(
@@ -53,17 +63,20 @@ func Load(
 
     defer f.Close()
 
-    dec := gob.NewDecoder(
+    r := bufio.NewReaderSize(
         f,
+        1<<20,
+    )
+
+    dec := gob.NewDecoder(
+        r,
     )
 
     var snap Snapshot
 
-    err = dec.Decode(
+    if err := dec.Decode(
         &snap,
-    )
-
-    if err != nil {
+    ); err != nil {
         return nil, err
     }
 
