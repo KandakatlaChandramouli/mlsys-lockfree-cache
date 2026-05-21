@@ -6,6 +6,10 @@ import (
 	"fluxruntime/internal/core"
 )
 
+const (
+	MaxFlushDelay = 50 * time.Microsecond
+)
+
 type Request struct {
 	ID   uint64
 	Req  *core.RawRequest
@@ -66,6 +70,12 @@ func (e *Engine) Submit(
 
 func (e *Engine) loop() {
 
+	timer := time.NewTimer(
+		MaxFlushDelay,
+	)
+
+	defer timer.Stop()
+
 	for {
 
 		v, ok := e.ring.Pop()
@@ -83,12 +93,31 @@ func (e *Engine) loop() {
 
 		n++
 
+		timer.Reset(
+			MaxFlushDelay,
+		)
+
+	collect:
+
 		for n < core.MaxBatchSize {
+
+			select {
+
+			case <-timer.C:
+				break collect
+
+			default:
+			}
 
 			v, ok := e.ring.Pop()
 
 			if !ok {
-				break
+
+				time.Sleep(
+					time.Microsecond,
+				)
+
+				continue
 			}
 
 			e.batch[n] = v.(*Request)
