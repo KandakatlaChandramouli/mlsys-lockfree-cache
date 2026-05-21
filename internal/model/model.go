@@ -140,6 +140,11 @@ func (m *Model) RunBatch(
 		batch.Size*MaxSeqLen,
 	)
 
+	tokenTypes := make(
+		[]int64,
+		batch.Size*MaxSeqLen,
+	)
+
 	for i, req := range batch.Requests {
 
 		base := i * MaxSeqLen
@@ -152,6 +157,7 @@ func (m *Model) RunBatch(
 
 			input[base+j] = int64(tok)
 			mask[base+j] = 1
+			tokenTypes[base+j] = 0
 		}
 	}
 
@@ -183,6 +189,20 @@ func (m *Model) RunBatch(
 
 	defer maskTensor.Destroy()
 
+	tokenTypeTensor, err := ort.NewTensor(
+		ort.NewShape(
+			int64(batch.Size),
+			MaxSeqLen,
+		),
+		tokenTypes,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	defer tokenTypeTensor.Destroy()
+
 	outputTensor, err := ort.NewEmptyTensor[float32](
 		ort.NewShape(
 			int64(batch.Size),
@@ -200,6 +220,7 @@ func (m *Model) RunBatch(
 		[]ort.Value{
 			inputTensor,
 			maskTensor,
+			tokenTypeTensor,
 		},
 		[]ort.Value{
 			outputTensor,
