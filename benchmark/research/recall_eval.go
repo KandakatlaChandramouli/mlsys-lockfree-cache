@@ -2,6 +2,7 @@ package main
 
 import (
     "fmt"
+    "math"
     "math/rand"
     "sort"
     "time"
@@ -46,8 +47,11 @@ func randomVector() []float32 {
         return out
     }
 
-    inv := float32(1.0) /
-        float32(norm)
+    inv := float32(
+        1.0 / math.Sqrt(
+            float64(norm),
+        ),
+    )
 
     for i := range out {
         out[i] *= inv
@@ -70,6 +74,17 @@ func dot(
     return s
 }
 
+func cosine(
+    a []float32,
+    b []float32,
+) float32 {
+
+    return dot(
+        a,
+        b,
+    )
+}
+
 func bruteForce(
     db [][]float32,
     q []float32,
@@ -83,7 +98,7 @@ func bruteForce(
 
     for i, v := range db {
 
-        s := dot(
+        s := cosine(
             q,
             v,
         )
