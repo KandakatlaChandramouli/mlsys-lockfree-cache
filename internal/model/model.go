@@ -232,19 +232,21 @@ func (m *Model) RunBatch(
 		return err
 	}
 
-	for _, req := range batch.Requests {
+	raw := outputTensor.GetData()
+
+	for batchIdx, req := range batch.Requests {
 
 		embedding := make(
 			[]float32,
 			EmbeddingDim,
 		)
 
-		for i := range embedding {
+		base := batchIdx * MaxSeqLen * EmbeddingDim
 
-			embedding[i] = float32(
-				(input[i%len(input)]%97),
-			) / 97.0
-		}
+		copy(
+			embedding,
+			raw[base:base+EmbeddingDim],
+		)
 
 		l2Normalize(
 			embedding,
