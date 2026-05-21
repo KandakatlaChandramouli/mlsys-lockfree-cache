@@ -206,6 +206,7 @@ func (m *Model) RunBatch(
 	outputTensor, err := ort.NewEmptyTensor[float32](
 		ort.NewShape(
 			int64(batch.Size),
+			MaxSeqLen,
 			EmbeddingDim,
 		),
 	)
