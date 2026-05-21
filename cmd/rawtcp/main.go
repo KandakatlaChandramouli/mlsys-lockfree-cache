@@ -15,7 +15,7 @@ type Header struct {
 	TokenCount uint32
 }
 
-var engine = lockfree.NewEngine()
+var engine = lockfree.NewSharded()
 
 func handle(
 	conn net.Conn,
