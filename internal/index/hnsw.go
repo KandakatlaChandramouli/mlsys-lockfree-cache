@@ -150,24 +150,14 @@ func (h *HNSWIndex) Search(
     }
 
     sort.Slice(
-        best,
+        best[:topK],
         func(i, j int) bool {
             return best[i].Score >
                    best[j].Score
         },
     )
 
-    out := make(
-        []vectorstore.SearchResult,
-        topK,
-    )
-
-    copy(
-        out,
-        best[:topK],
-    )
-
-    return out
+    return best[:topK]
 }
 
 func cosine(
