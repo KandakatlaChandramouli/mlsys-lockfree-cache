@@ -18,6 +18,7 @@ type Snapshot struct {
 	Failures         uint64 `json:"failures"`
 	ActiveConnections uint64 `json:"active_connections"`
 	QueuedRequests   uint64 `json:"queued_requests"`
+	Inflight uint64 `json:"inflight"`
 }
 
 func Stats() Snapshot {
@@ -27,6 +28,7 @@ func Stats() Snapshot {
 		Failures: Failures.Load(),
 		ActiveConnections: ActiveConnections.Load(),
 		QueuedRequests: QueuedRequests.Load(),
+		Inflight: ActiveConnections.Load(),
 	}
 }
 

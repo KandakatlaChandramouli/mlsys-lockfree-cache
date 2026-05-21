@@ -16,6 +16,7 @@ import (
 	"fluxruntime/internal/health"
 	"fluxruntime/internal/lockfree"
 	"fluxruntime/internal/metrics"
+	"fluxruntime/internal/backpressure"
 )
 
 type Header struct {
@@ -33,6 +34,7 @@ var (
 
 	connCounter atomic.Uint64
 	reqCounter  atomic.Uint64
+	controller = backpressure.New(8192)
 )
 
 func writerLoop(
