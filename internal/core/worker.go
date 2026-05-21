@@ -2,12 +2,11 @@ package core
 
 import (
 	"sync"
-	"time"
 )
 
 const (
-	ProcessingDelay = 100 * time.Microsecond
-	MaxBatchSize    = 64
+	MaxBatchSize = 64
+	MaxTokens    = 512
 )
 
 type RawRequest struct {
@@ -27,28 +26,36 @@ type Worker struct {
 var vectorPool = sync.Pool{
 	New: func() any {
 
-		v := make([]float32, 512)
+		v := make([]float32, MaxTokens)
 
 		return &v
 	},
 }
 
-func AcquireVector(
-	size int,
-) *[]float32 {
+var tokenPool = sync.Pool{
+	New: func() any {
 
-	v := vectorPool.Get().(*[]float32)
+		t := make([]uint32, MaxTokens)
 
-	if cap(*v) < size {
+		return &t
+	},
+}
 
-		n := make([]float32, size)
+func AcquireTokens() *[]uint32 {
 
-		return &n
-	}
+	return tokenPool.Get().(*[]uint32)
+}
 
-	tmp := (*v)[:size]
+func ReleaseTokens(
+	t *[]uint32,
+) {
 
-	return &tmp
+	tokenPool.Put(t)
+}
+
+func AcquireVector() *[]float32 {
+
+	return vectorPool.Get().(*[]float32)
 }
 
 func ReleaseVector(
@@ -71,8 +78,6 @@ func (w *Worker) InferBatch(
 	reqs []*RawRequest,
 ) []*RawResponse {
 
-	time.Sleep(ProcessingDelay)
-
 	out := make(
 		[]*RawResponse,
 		len(reqs),
@@ -80,16 +85,16 @@ func (w *Worker) InferBatch(
 
 	for i, req := range reqs {
 
-		vec := AcquireVector(
-			len(req.Tokens),
-		)
+		vec := AcquireVector()
 
-		for j := range *vec {
-			(*vec)[j] = float32(j) * 0.1
+		v := (*vec)[:len(req.Tokens)]
+
+		for j := range v {
+			v[j] = float32(j) * 0.1
 		}
 
 		out[i] = &RawResponse{
-			Vector: *vec,
+			Vector: v,
 		}
 	}
 

@@ -2,10 +2,12 @@ package main
 
 import (
 	"bufio"
+	"math"
 	"encoding/binary"
 	"io"
 	"log"
 	"net"
+	"sync"
 	"sync/atomic"
 	"syscall"
 
@@ -22,6 +24,15 @@ var (
 	engine = lockfree.NewSharded()
 
 	connCounter atomic.Uint64
+
+	respPool = sync.Pool{
+		New: func() any {
+
+			b := make([]byte, 8192)
+
+			return &b
+		},
+	}
 )
 
 func handle(
@@ -32,12 +43,12 @@ func handle(
 
 	reader := bufio.NewReaderSize(
 		conn,
-		64*1024,
+		128*1024,
 	)
 
 	writer := bufio.NewWriterSize(
 		conn,
-		64*1024,
+		128*1024,
 	)
 
 	connID := connCounter.Add(1)
@@ -63,10 +74,9 @@ func handle(
 			return
 		}
 
-		tokens := make(
-			[]uint32,
-			hdr.TokenCount,
-		)
+		tokenBuf := core.AcquireTokens()
+
+		tokens := (*tokenBuf)[:hdr.TokenCount]
 
 		err = binary.Read(
 			reader,
@@ -101,25 +111,34 @@ func handle(
 
 		resp := <-respCh
 
+		bufPtr := respPool.Get().(*[]byte)
+
+		buf := (*bufPtr)[:0]
+
 		vecLen := uint32(
 			len(resp.Vector),
 		)
 
-		err = binary.Write(
-			writer,
-			binary.LittleEndian,
+		tmp := make([]byte, 4)
+
+		binary.LittleEndian.PutUint32(
+			tmp,
 			vecLen,
 		)
 
-		if err != nil {
-			return
+		buf = append(buf, tmp...)
+
+		for _, f := range resp.Vector {
+
+			bits := binary.LittleEndian.AppendUint32(
+				nil,
+				math.Float32bits(f),
+			)
+
+			buf = append(buf, bits...)
 		}
 
-		err = binary.Write(
-			writer,
-			binary.LittleEndian,
-			resp.Vector,
-		)
+		_, err = writer.Write(buf)
 
 		if err != nil {
 			return
@@ -131,8 +150,14 @@ func handle(
 			return
 		}
 
+		respPool.Put(bufPtr)
+
 		core.ReleaseVector(
 			&resp.Vector,
+		)
+
+		core.ReleaseTokens(
+			tokenBuf,
 		)
 	}
 }
