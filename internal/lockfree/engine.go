@@ -7,6 +7,7 @@ import (
 )
 
 type Request struct {
+	ID   uint64
 	Req  *core.RawRequest
 	Resp chan *core.RawResponse
 }

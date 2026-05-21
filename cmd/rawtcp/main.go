@@ -2,12 +2,10 @@ package main
 
 import (
 	"bufio"
-	"math"
 	"encoding/binary"
 	"io"
 	"log"
 	"net"
-	"sync"
 	"sync/atomic"
 	"syscall"
 
@@ -20,20 +18,62 @@ type Header struct {
 	TokenCount uint32
 }
 
+type Pending struct {
+	ID   uint64
+	Resp chan *core.RawResponse
+}
+
 var (
 	engine = lockfree.NewSharded()
 
 	connCounter atomic.Uint64
-
-	respPool = sync.Pool{
-		New: func() any {
-
-			b := make([]byte, 8192)
-
-			return &b
-		},
-	}
+	reqCounter  atomic.Uint64
 )
+
+func writerLoop(
+	writer *bufio.Writer,
+	pending <-chan Pending,
+) {
+
+	for p := range pending {
+
+		resp := <-p.Resp
+
+		vecLen := uint32(
+			len(resp.Vector),
+		)
+
+		err := binary.Write(
+			writer,
+			binary.LittleEndian,
+			vecLen,
+		)
+
+		if err != nil {
+			return
+		}
+
+		err = binary.Write(
+			writer,
+			binary.LittleEndian,
+			resp.Vector,
+		)
+
+		if err != nil {
+			return
+		}
+
+		err = writer.Flush()
+
+		if err != nil {
+			return
+		}
+
+		core.ReleaseVector(
+			&resp.Vector,
+		)
+	}
+}
 
 func handle(
 	conn net.Conn,
@@ -52,6 +92,16 @@ func handle(
 	)
 
 	connID := connCounter.Add(1)
+
+	pending := make(
+		chan Pending,
+		4096,
+	)
+
+	go writerLoop(
+		writer,
+		pending,
+	)
 
 	for {
 
@@ -93,8 +143,12 @@ func handle(
 			1,
 		)
 
+		reqID := reqCounter.Add(1)
+
 		ok := engine.Submit(
 			&lockfree.Request{
+				ID: reqID,
+
 				Req: &core.RawRequest{
 					QueryHash: hdr.QueryHash,
 					Tokens:    tokens,
@@ -109,52 +163,10 @@ func handle(
 			return
 		}
 
-		resp := <-respCh
-
-		bufPtr := respPool.Get().(*[]byte)
-
-		buf := (*bufPtr)[:0]
-
-		vecLen := uint32(
-			len(resp.Vector),
-		)
-
-		tmp := make([]byte, 4)
-
-		binary.LittleEndian.PutUint32(
-			tmp,
-			vecLen,
-		)
-
-		buf = append(buf, tmp...)
-
-		for _, f := range resp.Vector {
-
-			bits := binary.LittleEndian.AppendUint32(
-				nil,
-				math.Float32bits(f),
-			)
-
-			buf = append(buf, bits...)
+		pending <- Pending{
+			ID:   reqID,
+			Resp: respCh,
 		}
-
-		_, err = writer.Write(buf)
-
-		if err != nil {
-			return
-		}
-
-		err = writer.Flush()
-
-		if err != nil {
-			return
-		}
-
-		respPool.Put(bufPtr)
-
-		core.ReleaseVector(
-			&resp.Vector,
-		)
 
 		core.ReleaseTokens(
 			tokenBuf,
