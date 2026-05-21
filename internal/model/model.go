@@ -126,6 +126,31 @@ func (m *Model) RunBatch(
 		return nil
 	}
 
+	input := make(
+		[]int64,
+		batch.Size*MaxSeqLen,
+	)
+
+	mask := make(
+		[]int64,
+		batch.Size*MaxSeqLen,
+	)
+
+	for i, req := range batch.Requests {
+
+		base := i * MaxSeqLen
+
+		for j, tok := range req.Tokens {
+
+			if j >= MaxSeqLen {
+				break
+			}
+
+			input[base+j] = int64(tok)
+			mask[base+j] = 1
+		}
+	}
+
 	for _, req := range batch.Requests {
 
 		embedding := make(
@@ -136,7 +161,7 @@ func (m *Model) RunBatch(
 		for i := range embedding {
 
 			embedding[i] = float32(
-				(req.Tokens[0]+int32(i))%97,
+				(input[i%len(input)]%97),
 			) / 97.0
 		}
 
