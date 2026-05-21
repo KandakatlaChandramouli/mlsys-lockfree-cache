@@ -22,6 +22,22 @@ func norm(
     return out
 }
 
+func L2(
+    a []float32,
+    b []float32,
+) float32 {
+
+    aa := norm(a)
+    bb := norm(b)
+
+    dot := avx.DotProduct(
+        a,
+        b,
+    )
+
+    return aa + bb - 2*dot
+}
+
 func Build(
     centroids [][]float32,
 ) []Centroid {
