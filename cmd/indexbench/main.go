@@ -11,7 +11,7 @@ import (
 
 const (
     Dim = 384
-    N   = 100000
+    N   = 10000
 )
 
 func randomVector() []float32 {
